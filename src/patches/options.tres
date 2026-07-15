@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ModLoaderCurrentOptions" load_steps=4 format=3 uid="uid://bls83tkysflvg"]
+
+[ext_resource type="Resource" uid="uid://cg0vv5k4o71rv" path="res://addons/mod_loader/options/profiles/production_workshop.tres" id="1"]
+[ext_resource type="Resource" uid="uid://gcbf510qmv0m" path="res://game/mod_loader_settings/dome_editor.tres" id="2"]
+[ext_resource type="Script" path="res://addons/mod_loader/resources/options_current.gd" id="3"]
+
+[resource]
+script = ExtResource("3")
+current_options = ExtResource("1")
+feature_override_options = {
+"console": ExtResource("1"),
+"disable_mods": ExtResource("1"),
+"editor": ExtResource("2")
+}
