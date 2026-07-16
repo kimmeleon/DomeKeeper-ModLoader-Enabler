@@ -12,6 +12,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:AppId = "1637320"
+$script:SteamDataContent = '{"app_id":1637320}'
 $script:LogPath = $null
 
 function Write-Info {
@@ -249,6 +250,67 @@ function Remove-SafeFile {
     }
 }
 
+function Get-SteamDataPath {
+    param([Parameter(Mandatory = $true)]$Installation)
+    return Join-Path $Installation.GamePath "steam_data.json"
+}
+
+function Test-SteamDataValid {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+    try {
+        $data = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        return ($data.PSObject.Properties.Name -contains "app_id") -and
+            ([string]$data.app_id -eq $script:AppId)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Ensure-SteamData {
+    param([Parameter(Mandatory = $true)]$Installation)
+
+    $path = Get-SteamDataPath -Installation $Installation
+    Assert-PathInside -Root $Installation.GamePath -Path $path
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        if (-not (Test-SteamDataValid -Path $path)) {
+            throw "An incompatible steam_data.json already exists. The tool will not overwrite it: $path"
+        }
+        Write-Info "Using the existing valid Dome Keeper Steam App ID configuration."
+        return $false
+    }
+
+    Write-Info "Creating the Steam Workshop App ID configuration..."
+    $utf8WithoutBom = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($path, $script:SteamDataContent, $utf8WithoutBom)
+    if ((Get-Content -LiteralPath $path -Raw) -ne $script:SteamDataContent) {
+        throw "steam_data.json verification failed."
+    }
+    return $true
+}
+
+function Remove-ManagedSteamData {
+    param([Parameter(Mandatory = $true)]$Installation)
+
+    $path = Get-SteamDataPath -Installation $Installation
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return
+    }
+
+    $content = Get-Content -LiteralPath $path -Raw
+    if ($content -eq $script:SteamDataContent) {
+        Remove-SafeFile -GameRoot $Installation.GamePath -Path $path
+        Write-Info "Removed the managed Steam Workshop App ID configuration."
+    }
+    else {
+        Write-WarningMessage "steam_data.json was not created exactly by this tool and was left unchanged."
+    }
+}
+
 function Get-StatePaths {
     param(
         [Parameter(Mandatory = $true)]$Installation,
@@ -269,12 +331,22 @@ function Get-StatePaths {
 function Assert-PackageIntegrity {
     param([Parameter(Mandatory = $true)]$Build)
 
-    $patchPath = Join-Path $script:PackageRoot "patches\options.res"
-    if (-not (Test-Path -LiteralPath $patchPath -PathType Leaf)) {
-        throw "Patch resource is missing: $patchPath"
+    $patches = @()
+    foreach ($patch in @($Build.patches)) {
+        $patchPath = Join-Path $script:PackageRoot ([string]$patch.packagePath)
+        if (-not (Test-Path -LiteralPath $patchPath -PathType Leaf)) {
+            throw "Patch resource is missing: $patchPath"
+        }
+        if ((Get-Sha256 -Path $patchPath) -ne ([string]$patch.sha256).ToUpperInvariant()) {
+            throw "Patch resource hash mismatch: $($patch.packagePath)"
+        }
+        $patches += [PSCustomObject]@{
+            PatchPath = $patchPath
+            PatchTarget = [string]$patch.target
+        }
     }
-    if ((Get-Sha256 -Path $patchPath) -ne ([string]$Build.patchSha256).ToUpperInvariant()) {
-        throw "Patch resource hash mismatch. Re-download the release ZIP."
+    if ($patches.Count -eq 0) {
+        throw "No patch resources are defined for this supported build."
     }
 
     foreach ($property in $script:Config.gdre.files.PSObject.Properties) {
@@ -288,7 +360,7 @@ function Assert-PackageIntegrity {
     }
 
     return [PSCustomObject]@{
-        PatchPath = $patchPath
+        Patches = $patches
         GdrePath = Join-Path $script:PackageRoot "tools\gdre\gdre_tools.exe"
     }
 }
@@ -335,8 +407,7 @@ function Wait-ForCompletedFile {
 function Invoke-GdrePatch {
     param(
         [Parameter(Mandatory = $true)][string]$GdrePath,
-        [Parameter(Mandatory = $true)][string]$PatchPath,
-        [Parameter(Mandatory = $true)][string]$PatchTarget,
+        [Parameter(Mandatory = $true)][object[]]$Patches,
         [Parameter(Mandatory = $true)][string]$SourcePck,
         [Parameter(Mandatory = $true)][string]$DestinationPck
     )
@@ -344,9 +415,11 @@ function Invoke-GdrePatch {
     $arguments = @(
         "--headless",
         "--pck-patch=$SourcePck",
-        "--output=$DestinationPck",
-        "--patch-file=$PatchPath=$PatchTarget"
+        "--output=$DestinationPck"
     )
+    foreach ($patch in $Patches) {
+        $arguments += "--patch-file=$($patch.PatchPath)=$($patch.PatchTarget)"
+    }
 
     $quotedArguments = foreach ($argument in $arguments) {
         '"' + $argument.Replace('"', '\"') + '"'
@@ -397,7 +470,8 @@ function Write-State {
         cleanPckSha256 = ([string]$Build.cleanPckSha256).ToUpperInvariant()
         patchedPckSha256 = ([string]$Build.patchedPckSha256).ToUpperInvariant()
         backupPath = $Paths.BackupPath
-        patchTarget = [string]$Build.patchTarget
+        patchTargets = @($Build.patches | ForEach-Object { [string]$_.target })
+        steamDataPath = Get-SteamDataPath -Installation $Installation
         gdreVersion = [string]$script:Config.gdre.version
     }
     $state | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Paths.StateFile -Encoding UTF8
@@ -422,11 +496,21 @@ function Show-Status {
     }
 
     $paths = Get-StatePaths -Installation $Installation -BuildId $Installation.BuildId
+    $steamDataPath = Get-SteamDataPath -Installation $Installation
+    $steamDataReady = Test-SteamDataValid -Path $steamDataPath
     if ($pckHash -eq ([string]$build.cleanPckSha256).ToUpperInvariant()) {
         Write-Ok "Status: disabled (exact clean Steam staging PCK)."
+        if (Test-Path -LiteralPath $steamDataPath -PathType Leaf) {
+            Write-WarningMessage "A steam_data.json file remains, but the PCK is clean and mods are disabled."
+        }
     }
     elseif ($pckHash -eq ([string]$build.patchedPckSha256).ToUpperInvariant()) {
-        Write-Ok "Status: enabled. Local and Steam Workshop mod loading are active."
+        if ($steamDataReady) {
+            Write-Ok "Status: enabled. Local and Steam Workshop mod loading are active."
+        }
+        else {
+            Write-WarningMessage "Status: partially enabled. Run Enable Mod Loader.bat to repair Steam Workshop loading."
+        }
     }
     else {
         Write-WarningMessage "Status: unknown PCK. The tool will not modify it."
@@ -453,12 +537,8 @@ function Enable-ModLoader {
     $pckHash = Get-Sha256 -Path $Installation.PckPath
     $cleanHash = ([string]$build.cleanPckSha256).ToUpperInvariant()
     $patchedHash = ([string]$build.patchedPckSha256).ToUpperInvariant()
-
-    if ($pckHash -eq $patchedHash) {
-        Write-Ok "Mod Loader is already enabled for this build."
-        return
-    }
-    if ($pckHash -ne $cleanHash) {
+    $alreadyPatched = $pckHash -eq $patchedHash
+    if ($pckHash -ne $cleanHash -and -not $alreadyPatched) {
         throw "domekeeper.pck is not the supported clean Steam file. Use Steam 'Verify integrity of game files', then try again."
     }
 
@@ -473,28 +553,38 @@ function Enable-ModLoader {
     $script:LogPath = $paths.LogFile
     Write-Log "Enable requested for build $($Installation.BuildId)."
 
-    $driveName = [IO.Path]::GetPathRoot($Installation.GamePath).Substring(0, 1)
-    $freeBytes = (Get-PSDrive -Name $driveName).Free
-    $requiredBytes = (Get-Item -LiteralPath $Installation.PckPath).Length + 268435456
-    if ($freeBytes -lt $requiredBytes) {
-        throw "Not enough free space. At least $([Math]::Ceiling($requiredBytes / 1GB)) GB is required."
-    }
-
-    if (Test-Path -LiteralPath $paths.BackupPath -PathType Leaf) {
-        if ((Get-Sha256 -Path $paths.BackupPath) -ne $cleanHash) {
-            throw "An unexpected backup already exists: $($paths.BackupPath)"
+    if (-not $alreadyPatched) {
+        $driveName = [IO.Path]::GetPathRoot($Installation.GamePath).Substring(0, 1)
+        $freeBytes = (Get-PSDrive -Name $driveName).Free
+        $requiredBytes = (Get-Item -LiteralPath $Installation.PckPath).Length + 268435456
+        if ($freeBytes -lt $requiredBytes) {
+            throw "Not enough free space. At least $([Math]::Ceiling($requiredBytes / 1GB)) GB is required."
         }
-        Remove-SafeFile -GameRoot $Installation.GamePath -Path $paths.BackupPath
-    }
-    Remove-SafeFile -GameRoot $Installation.GamePath -Path $paths.WorkPath
 
-    Write-Info "Moving the original PCK into the recovery backup..."
-    Move-Item -LiteralPath $Installation.PckPath -Destination $paths.BackupPath
+        if (Test-Path -LiteralPath $paths.BackupPath -PathType Leaf) {
+            if ((Get-Sha256 -Path $paths.BackupPath) -ne $cleanHash) {
+                throw "An unexpected backup already exists: $($paths.BackupPath)"
+            }
+            Remove-SafeFile -GameRoot $Installation.GamePath -Path $paths.BackupPath
+        }
+        Remove-SafeFile -GameRoot $Installation.GamePath -Path $paths.WorkPath
+    }
+
+    $steamDataCreated = Ensure-SteamData -Installation $Installation
+    if ($alreadyPatched) {
+        Write-State -Paths $paths -Installation $Installation -Build $build -Status "enabled"
+        Write-Log "Existing PCK installation repaired for Steam Workshop loading."
+        Write-Ok "Mod Loader is enabled and Steam Workshop loading is configured."
+        return
+    }
 
     $patchedPckInstalled = $false
     try {
+        Write-Info "Moving the original PCK into the recovery backup..."
+        Move-Item -LiteralPath $Installation.PckPath -Destination $paths.BackupPath
+
         Write-Info "Applying the auditable Mod Loader configuration patch..."
-        Invoke-GdrePatch -GdrePath $package.GdrePath -PatchPath $package.PatchPath -PatchTarget ([string]$build.patchTarget) -SourcePck $paths.BackupPath -DestinationPck $paths.WorkPath
+        Invoke-GdrePatch -GdrePath $package.GdrePath -Patches $package.Patches -SourcePck $paths.BackupPath -DestinationPck $paths.WorkPath
 
         Write-Info "Verifying the patched PCK..."
         $actualPatchedHash = Get-Sha256 -Path $paths.WorkPath
@@ -518,6 +608,9 @@ function Enable-ModLoader {
         elseif (-not (Test-Path -LiteralPath $Installation.PckPath) -and (Test-Path -LiteralPath $paths.BackupPath)) {
             Move-Item -LiteralPath $paths.BackupPath -Destination $Installation.PckPath
         }
+        if ($steamDataCreated) {
+            Remove-ManagedSteamData -Installation $Installation
+        }
         throw
     }
 
@@ -539,6 +632,7 @@ function Disable-ModLoader {
     $cleanHash = ([string]$build.cleanPckSha256).ToUpperInvariant()
     $patchedHash = ([string]$build.patchedPckSha256).ToUpperInvariant()
     if ($pckHash -eq $cleanHash) {
+        Remove-ManagedSteamData -Installation $Installation
         Write-Ok "Mod Loader is already disabled; the Steam PCK is clean."
         return
     }
@@ -568,6 +662,7 @@ function Disable-ModLoader {
             throw "Restored PCK verification failed."
         }
         Remove-SafeFile -GameRoot $Installation.GamePath -Path $paths.RemovePath
+        Remove-ManagedSteamData -Installation $Installation
         Write-State -Paths $paths -Installation $Installation -Build $build -Status "disabled"
         Write-Log "Disable completed successfully."
     }

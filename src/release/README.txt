@@ -30,6 +30,9 @@ SAFETY
 - About 1.5 GB of free disk space is required during installation.
 - Save data and installed mods are never changed.
 - Unknown or modified PCK files are refused.
+- A minimal steam_data.json pins Dome Keeper's Steam App ID so Workshop
+  subscriptions are scanned from the correct app directory. Disable removes
+  it only when its content exactly matches the file managed by this tool.
 - Steam file verification remains the fallback recovery method.
 
 If automatic Steam detection fails, run this in PowerShell:

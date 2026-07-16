@@ -83,31 +83,47 @@ foreach ($property in $config.gdre.files.PSObject.Properties) {
     }
 }
 
+$buildDefinition = @($config.builds) | Select-Object -First 1
 $patchBuildRoot = Join-Path $buildRoot "resource-project"
-$patchSourceRoot = Join-Path $patchBuildRoot "addons\mod_loader\options"
-New-Item -ItemType Directory -Force -Path $patchSourceRoot | Out-Null
-$patchSource = Join-Path $patchSourceRoot "options.tres"
-$patchBinary = Join-Path $patchBuildRoot "options.res"
-Copy-Item -LiteralPath (Join-Path $root "src\patches\options.tres") -Destination $patchSource
+New-Item -ItemType Directory -Force -Path $patchBuildRoot | Out-Null
 Copy-Item -LiteralPath (Join-Path $root "src\patches\project.godot") -Destination (Join-Path $patchBuildRoot "project.godot")
 
-Write-Host "Compiling the readable Mod Loader configuration resource..."
-$compileArguments = @(
-    '"--path"',
-    ('"{0}"' -f $patchBuildRoot.Replace('"', '\"')),
-    '"--headless"',
-    '"--txt-to-bin=res://addons/mod_loader/options/options.tres"'
-)
-$compileProcess = Start-Process -FilePath $gdreExe -ArgumentList $compileArguments -WorkingDirectory $patchBuildRoot -Wait -PassThru -NoNewWindow
-if ($compileProcess.ExitCode -ne 0) {
-    throw "GDRE Tools resource compilation failed with exit code $($compileProcess.ExitCode)."
-}
-Wait-ForFile -Path $patchBinary
+$compiledPatches = @()
+foreach ($patchDefinition in @($buildDefinition.patches)) {
+    $resourcePath = [string]$patchDefinition.resourcePath
+    if (-not $resourcePath.StartsWith("res://", [StringComparison]::Ordinal)) {
+        throw "Patch resourcePath must start with res://: $resourcePath"
+    }
 
-$buildDefinition = @($config.builds) | Select-Object -First 1
-$patchHash = (Get-FileHash -LiteralPath $patchBinary -Algorithm SHA256).Hash.ToUpperInvariant()
-if ($patchHash -ne ([string]$buildDefinition.patchSha256).ToUpperInvariant()) {
-    throw "Generated patch SHA-256 mismatch. Expected $($buildDefinition.patchSha256), got $patchHash."
+    $relativeResourcePath = $resourcePath.Substring(6).Replace("/", "\")
+    $patchSource = Join-Path $root ([string]$patchDefinition.sourcePath)
+    $resourceProjectSource = Join-Path $patchBuildRoot $relativeResourcePath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resourceProjectSource) | Out-Null
+    Copy-Item -LiteralPath $patchSource -Destination $resourceProjectSource
+
+    $binaryName = [IO.Path]::GetFileNameWithoutExtension($relativeResourcePath) + ".res"
+    $patchBinary = Join-Path $patchBuildRoot $binaryName
+    Write-Host "Compiling $resourcePath..."
+    $compileArguments = @(
+        '"--path"',
+        ('"{0}"' -f $patchBuildRoot.Replace('"', '\"')),
+        '"--headless"',
+        ('"--txt-to-bin={0}"' -f $resourcePath.Replace('"', '\"'))
+    )
+    $compileProcess = Start-Process -FilePath $gdreExe -ArgumentList $compileArguments -WorkingDirectory $patchBuildRoot -Wait -PassThru -NoNewWindow
+    if ($compileProcess.ExitCode -ne 0) {
+        throw "GDRE Tools resource compilation failed with exit code $($compileProcess.ExitCode): $resourcePath"
+    }
+    Wait-ForFile -Path $patchBinary
+
+    $patchHash = (Get-FileHash -LiteralPath $patchBinary -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($patchHash -ne ([string]$patchDefinition.sha256).ToUpperInvariant()) {
+        throw "Generated patch SHA-256 mismatch for $resourcePath. Expected $($patchDefinition.sha256), got $patchHash."
+    }
+    $compiledPatches += [PSCustomObject]@{
+        BinaryPath = $patchBinary
+        PackagePath = [string]$patchDefinition.packagePath
+    }
 }
 
 $packageName = "DomeKeeper-ModLoader-Enabler-v$Version"
@@ -117,7 +133,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot "scripts"), (J
 
 Copy-Item -Path (Join-Path $root "src\launchers\*.bat") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "src\scripts\DomeKeeperModLoader.ps1") -Destination (Join-Path $packageRoot "scripts")
-Copy-Item -LiteralPath $patchBinary -Destination (Join-Path $packageRoot "patches\options.res")
+foreach ($compiledPatch in $compiledPatches) {
+    $packagePatchPath = Join-Path $packageRoot $compiledPatch.PackagePath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $packagePatchPath) | Out-Null
+    Copy-Item -LiteralPath $compiledPatch.BinaryPath -Destination $packagePatchPath
+}
 Copy-Item -LiteralPath (Join-Path $root "src\release\README.txt") -Destination (Join-Path $packageRoot "README.txt")
 Copy-Item -LiteralPath (Join-Path $root "supported-builds.json"), (Join-Path $root "VERSION"), (Join-Path $root "LICENSE"), (Join-Path $root "THIRD_PARTY_NOTICES.md") -Destination $packageRoot
 Copy-Item -Path (Join-Path $root "third_party\*") -Destination (Join-Path $packageRoot "third_party")

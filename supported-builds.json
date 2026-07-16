@@ -18,9 +18,16 @@
       "baseDepotManifest": "7372251440806421745",
       "exeSha256": "4F2EAB1B4E3049A46186B0D261C2C574E3BFFECB10B791C3D05C1D02AF7F71B4",
       "cleanPckSha256": "C8309E3D51B31250CFBF1F50BFC33B8080E03AB01264DC9A1828BC5A84FA2961",
-      "patchSha256": "8BE44702C1DC2847E700159F39ED3920A132287DBD09CF903E5ED6D30F21A3D3",
       "patchedPckSha256": "6946D05B2D4C2A46F2D42DADA40C6A6AAA5B08C163658EA1815DA2BBE0E92AC6",
-      "patchTarget": "res://.godot/exported/133200997/export-ccbd6f639c26f3b274a2ce93101cf784-options.res"
+      "patches": [
+        {
+          "sourcePath": "src/patches/options.tres",
+          "resourcePath": "res://addons/mod_loader/options/options.tres",
+          "packagePath": "patches/options.res",
+          "sha256": "8BE44702C1DC2847E700159F39ED3920A132287DBD09CF903E5ED6D30F21A3D3",
+          "target": "res://.godot/exported/133200997/export-ccbd6f639c26f3b274a2ce93101cf784-options.res"
+        }
+      ]
     }
   ]
 }

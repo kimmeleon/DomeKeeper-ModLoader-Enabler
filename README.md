@@ -24,12 +24,13 @@ Build ID, PCK SHA-256, and enabled/disabled state.
 ## What it changes
 
 Dome Keeper staging Build `24088424` includes Godot Mod Loader `7.0.1`, but
-the exported game selects a profile that disables mods and does not scan the
-Steam Workshop. This tool changes one Mod Loader options resource so the
-loader selects its existing `production_workshop` profile.
+the exported game selects a profile that disables mods. This tool selects the
+existing `production_workshop` profile and creates the Mod Loader's supported
+`steam_data.json` configuration with Dome Keeper's Steam App ID `1637320`.
 
-The readable source for that resource is
-[`src/patches/options.tres`](src/patches/options.tres). No decompiled game
+The readable source for the patched resource is
+[`src/patches/options.tres`](src/patches/options.tres). The generated
+`steam_data.json` contains only `{"app_id":1637320}`. No decompiled game
 script is distributed.
 
 ## Safety model
@@ -43,6 +44,8 @@ script is distributed.
   game folder while the loader is enabled.
 - A failed patch automatically moves the original PCK back into place.
 - Disable restores the exact original PCK, not a reconstructed equivalent.
+- Disable removes `steam_data.json` only when its content exactly matches the
+  file managed by this tool; any other existing file is left unchanged.
 - Save data and installed mods are never read, written, or deleted.
 
 About 1.5 GB of free disk space is required while enabling. Steam's
@@ -81,7 +84,7 @@ The build script:
 
 1. Downloads the pinned official GDRE Tools Windows archive.
 2. Verifies the archive and each included binary by SHA-256.
-3. Compiles `options.tres` to `options.res` and verifies the result.
+3. Compiles the readable Mod Loader resource and verifies its hash.
 4. Creates the self-contained release ZIP and checksum in `artifacts/`.
 
 ## Dependencies and licenses
