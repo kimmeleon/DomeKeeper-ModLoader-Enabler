@@ -23,7 +23,7 @@ Build ID, PCK SHA-256, and enabled/disabled state.
 
 ## What it changes
 
-Dome Keeper staging Build `24088424` includes Godot Mod Loader `7.0.1`, but
+Dome Keeper's supported staging builds include Godot Mod Loader `7.0.1`, but
 the exported game selects a profile that disables mods. This tool selects the
 existing `production_workshop` profile and creates the Mod Loader's supported
 `steam_data.json` configuration with Dome Keeper's Steam App ID `1637320`.
@@ -56,6 +56,7 @@ About 1.5 GB of free disk space is required while enabling. Steam's
 | Steam beta | Build ID | Base depot manifest |
 | --- | ---: | ---: |
 | `staging` | `24088424` | `7372251440806421745` |
+| `staging` | `24236629` | `5633432357314597998` |
 
 The tool intentionally fails closed after a Dome Keeper update. A new release
 must verify and add the new build hashes before modifying it.
