@@ -57,6 +57,7 @@ About 1.5 GB of free disk space is required while enabling. Steam's
 | --- | ---: | ---: |
 | `staging` | `24088424` | `7372251440806421745` |
 | `staging` | `24236629` | `5633432357314597998` |
+| `staging` | `24350426` | `8354167610550737081` |
 
 The tool intentionally fails closed after a Dome Keeper update. A new release
 must verify and add the new build hashes before modifying it.

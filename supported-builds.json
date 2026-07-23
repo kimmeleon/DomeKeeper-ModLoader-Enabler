@@ -45,6 +45,23 @@
           "target": "res://.godot/exported/133200997/export-ccbd6f639c26f3b274a2ce93101cf784-options.res"
         }
       ]
+    },
+    {
+      "beta": "staging",
+      "buildId": "24350426",
+      "baseDepotManifest": "8354167610550737081",
+      "exeSha256": "21EDC806BD3DBAFB7A53B1D968CC3EA25A7EB1110588732D9394360B2D31FF12",
+      "cleanPckSha256": "7F7E79B62AC7C489CD54DE46E2DD19CE1F5A56E76E5ACDAAC5D6DD69E5F34089",
+      "patchedPckSha256": "2FBF3CE64BDC430A08150B6448740208B337F88CB81A880431DD07BAE0C26F51",
+      "patches": [
+        {
+          "sourcePath": "src/patches/options.tres",
+          "resourcePath": "res://addons/mod_loader/options/options.tres",
+          "packagePath": "patches/options.res",
+          "sha256": "8BE44702C1DC2847E700159F39ED3920A132287DBD09CF903E5ED6D30F21A3D3",
+          "target": "res://.godot/exported/133200997/export-ccbd6f639c26f3b274a2ce93101cf784-options.res"
+        }
+      ]
     }
   ]
 }
