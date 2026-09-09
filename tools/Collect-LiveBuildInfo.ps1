@@ -96,7 +96,9 @@ $manifestText = Get-Content -LiteralPath $manifestPath -Raw
 $buildId = Get-AcfValue -Text $manifestText -Name 'buildid'
 $beta = (Get-AcfValue -Text $manifestText -Name 'BetaKey').ToLowerInvariant()
 
-if ($beta -ne '') {
+# Steam may record the default public branch as BetaKey="public".
+# Treat both an empty value and "public" as the live/public branch; staging remains explicit.
+if ($beta -ne '' -and $beta -ne 'public') {
     throw "The selected installation is not the public/live branch. BetaKey='$beta'. Supply the public Dome Keeper installation with -GamePath."
 }
 if ($buildId -ne '25038893') {
@@ -109,6 +111,7 @@ $cleanPckSha256 = Get-Sha256 -Path $pckPath
 $exeSha256 = Get-Sha256 -Path $exePath
 
 Write-Host "Public build: $buildId"
+Write-Host "Public branch marker: $(if ($beta -eq '') { '<empty>' } else { $beta })"
 Write-Host "Game path: $game"
 Write-Host "domekeeper.exe SHA-256: $exeSha256"
 Write-Host "domekeeper.pck SHA-256: $cleanPckSha256"
@@ -165,7 +168,7 @@ Write-Host ""
 Write-Host "Copy these values into supported-builds.json for the public beta:'' entry:" -ForegroundColor Green
 $result = [ordered]@{
     buildId = $buildId
-    beta = ''
+    beta = 'public'
     cleanPckSha256 = $cleanPckSha256
     patchedPckSha256 = $patchedPckSha256
     exeSha256 = $exeSha256
