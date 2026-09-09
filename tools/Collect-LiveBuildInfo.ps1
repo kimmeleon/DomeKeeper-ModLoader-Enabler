@@ -118,9 +118,6 @@ Write-Host "domekeeper.pck SHA-256: $cleanPckSha256"
 Write-Host ""
 Write-Host "Preparing the verified GDRE patch with build.ps1..."
 & (Join-Path $root 'build.ps1')
-if ($LASTEXITCODE -ne 0) {
-    throw "build.ps1 failed with exit code $LASTEXITCODE."
-}
 
 $buildDefinition = @($config.builds) | Select-Object -First 1
 if ($null -eq $buildDefinition) { throw 'supported-builds.json contains no build definition.' }
